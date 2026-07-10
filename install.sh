@@ -5,6 +5,12 @@
 
 # No set -e — we handle errors manually so partial failures don't abort the whole install
 
+# ── When piped via curl|bash, stdin is the script itself so read() gets nothing.
+# Reopen stdin from the terminal so interactive prompts work correctly. ──────
+if [ ! -t 0 ] && [ -e /dev/tty ]; then
+    exec 0</dev/tty
+fi
+
 REPO_AIO="https://github.com/clement91380/42_all_in_one.git"
 INSTALL_DIR="$HOME/.42aio"
 VENV_DIR="$INSTALL_DIR/venv"

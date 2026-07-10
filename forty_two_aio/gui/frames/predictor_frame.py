@@ -1,183 +1,281 @@
-"""Predictor frame — estimate project grade."""
+"""Predictor frame — estimate project grade with smart compilation handling."""
 
 from __future__ import annotations
 
+import subprocess
 import threading
 from pathlib import Path
 from tkinter import filedialog
 
 import customtkinter as ctk
 
-from ...modules.compiler.checker import check_compilation, check_main_commented_or_missing
+from ...modules.compiler.checker import (
+    check_project_compilation,
+    analyze_main,
+)
 from ...modules.predictor.grade_predictor import (
     PROJECT_CRITERIA,
     detect_project_from_files,
     predict_grade,
 )
+from ...modules.norm import NorminetteFormatter
 
 
 class PredictorFrame(ctk.CTkFrame):
     def __init__(self, parent, app):
         super().__init__(parent)
         self.app = app
+        self.formatter = NorminetteFormatter()
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(3, weight=1)
 
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 10))
-
-        ctk.CTkLabel(
-            header, text="Grade Predictor", font=ctk.CTkFont(size=22, weight="bold")
-        ).pack(side="left")
-
-        config_frame = ctk.CTkFrame(self, fg_color="transparent")
-        config_frame.grid(row=1, column=0, sticky="ew", padx=20)
-
-        ctk.CTkLabel(config_frame, text="Project:").pack(side="left")
-        self.project_var = ctk.StringVar(value="auto-detect")
-        projects = ["auto-detect"] + sorted(PROJECT_CRITERIA.keys())
-        ctk.CTkOptionMenu(
-            config_frame, variable=self.project_var, values=projects, width=150
-        ).pack(side="left", padx=10)
-
-        self.select_btn = ctk.CTkButton(
-            config_frame, text="Select Project Folder", width=150,
-            command=self._select_folder
-        )
-        self.select_btn.pack(side="left", padx=10)
-
-        self.predict_btn = ctk.CTkButton(
-            config_frame, text="Predict Grade", width=120, command=self._predict
-        )
-        self.predict_btn.pack(side="right", padx=5)
-
-        self.folder_label = ctk.CTkLabel(self, text="No folder selected", text_color="gray")
-        self.folder_label.grid(row=2, column=0, sticky="w", padx=20, pady=5)
-
-        results_frame = ctk.CTkFrame(self)
-        results_frame.grid(row=3, column=0, sticky="nsew", padx=20, pady=(5, 20))
-        results_frame.grid_columnconfigure(0, weight=1)
-        results_frame.grid_columnconfigure(1, weight=1)
-        results_frame.grid_rowconfigure(1, weight=1)
-
-        self.score_label = ctk.CTkLabel(
-            results_frame, text="--", font=ctk.CTkFont(size=48, weight="bold")
-        )
-        self.score_label.grid(row=0, column=0, pady=20)
-
-        self.confidence_label = ctk.CTkLabel(
-            results_frame, text="", text_color="gray"
-        )
-        self.confidence_label.grid(row=0, column=1, pady=20)
-
-        self.details_output = ctk.CTkTextbox(
-            results_frame, font=ctk.CTkFont(family="monospace", size=13)
-        )
-        self.details_output.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=10, pady=(0, 10))
+        self._build_header()
+        self._build_config()
+        self._build_results()
 
         self.folder_path: str = ""
 
+    def _build_header(self):
+        hdr = ctk.CTkFrame(self, fg_color="transparent")
+        hdr.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 8))
+
+        ctk.CTkLabel(hdr, text="Grade Predictor",
+                     font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+
+        self.predict_btn = ctk.CTkButton(
+            hdr, text="Predict Grade", width=130,
+            command=self._predict
+        )
+        self.predict_btn.pack(side="right")
+
+    def _build_config(self):
+        bar = ctk.CTkFrame(self, fg_color="transparent")
+        bar.grid(row=1, column=0, sticky="ew", padx=20, pady=4)
+
+        ctk.CTkLabel(bar, text="Project:").pack(side="left")
+        self.project_var = ctk.StringVar(value="auto-detect")
+        projects = ["auto-detect"] + sorted(PROJECT_CRITERIA.keys())
+        ctk.CTkOptionMenu(bar, variable=self.project_var,
+                          values=projects, width=150).pack(side="left", padx=8)
+
+        ctk.CTkButton(bar, text="Open Folder", width=120,
+                      command=self._select_folder).pack(side="left", padx=8)
+
+        self.folder_label = ctk.CTkLabel(bar, text="No folder selected",
+                                          text_color="gray")
+        self.folder_label.pack(side="left", padx=8)
+
+    def _build_results(self):
+        results = ctk.CTkFrame(self)
+        results.grid(row=3, column=0, sticky="nsew", padx=20, pady=(8, 16))
+        results.grid_columnconfigure(1, weight=1)
+        results.grid_rowconfigure(0, weight=1)
+
+        # Left: score + criteria
+        left = ctk.CTkFrame(results, width=220, fg_color="transparent")
+        left.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
+        left.grid_propagate(False)
+
+        self.score_label = ctk.CTkLabel(
+            left, text="--",
+            font=ctk.CTkFont(size=54, weight="bold"),
+        )
+        self.score_label.pack(pady=(20, 4))
+
+        self.pass_label = ctk.CTkLabel(left, text="", font=ctk.CTkFont(size=14))
+        self.pass_label.pack()
+
+        self.confidence_label = ctk.CTkLabel(left, text="",
+                                              text_color="gray",
+                                              font=ctk.CTkFont(size=11))
+        self.confidence_label.pack(pady=(2, 12))
+
+        ctk.CTkLabel(left, text="Criteria:", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=8)
+        self.criteria_frame = ctk.CTkScrollableFrame(left, fg_color="transparent")
+        self.criteria_frame.pack(fill="both", expand=True, padx=4)
+
+        # Right: detailed log
+        self.log = ctk.CTkTextbox(results, font=ctk.CTkFont(family="monospace", size=12))
+        self.log.grid(row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
+
+    # ------------------------------------------------------------------
+
     def _select_folder(self):
-        path = filedialog.askdirectory(title="Select Project Folder")
+        path = filedialog.askdirectory(title="Select project folder")
         if path:
             self.folder_path = path
-            self.folder_label.configure(text=path)
+            self.folder_label.configure(text=path, text_color="white")
 
     def _predict(self):
         if not self.folder_path:
             return
-        self.details_output.delete("1.0", "end")
+        self.log.delete("1.0", "end")
+        self.predict_btn.configure(state="disabled", text="Analysing...")
+        for w in self.criteria_frame.winfo_children():
+            w.destroy()
         threading.Thread(target=self._run_prediction, daemon=True).start()
 
     def _run_prediction(self):
         folder = Path(self.folder_path)
         c_files = list(folder.rglob("*.c"))
         h_files = list(folder.rglob("*.h"))
-        all_files = [str(f.relative_to(folder)) for f in c_files + h_files]
+        all_names = [f.name for f in c_files + h_files]
 
         project_name = self.project_var.get()
         if project_name == "auto-detect":
-            project_name = detect_project_from_files(all_files)
+            project_name = detect_project_from_files(all_names)
             self._log(f"Detected project: {project_name}\n\n")
 
         checks = {}
 
-        self._log("Running checks...\n")
+        # ── 1. Compilation ─────────────────────────────────────────
+        self._log("=== Compilation ===\n")
+        self._log("(main() handled in memory — original files untouched)\n\n")
 
-        compile_ok = True
+        proj_comp = check_project_compilation(folder)
+
+        for r in proj_comp.files:
+            name = Path(r.file_path).name
+            icon = "OK  " if r.success else "FAIL"
+            note = ""
+            if r.main_was_commented:
+                note = "  [main uncommented in memory]"
+            elif r.main_was_injected:
+                note = "  [stub main injected in memory]"
+            self._log(f"  {icon} {name}{note}\n")
+            if not r.success:
+                for e in r.errors[:3]:
+                    self._log(f"       {e}\n")
+
+        checks["compilation"] = proj_comp.all_passed
+        status = "PASS" if proj_comp.all_passed else f"FAIL ({proj_comp.passed}/{proj_comp.total})"
+        self._log(f"\n  Result: {status}\n\n")
+
+        # ── 2. main() state (for information, not penalized) ───────
+        self._log("=== main() status ===\n")
         for c_file in c_files:
-            result = check_compilation(str(c_file))
-            if not result.success:
-                compile_ok = False
-                self._log(f"  FAIL compile: {c_file.name}\n")
-        checks["compilation"] = compile_ok
-        self._log(f"  Compilation: {'PASS' if compile_ok else 'FAIL'}\n")
+            try:
+                source = c_file.read_text(errors="replace")
+                info = analyze_main(source)
+                if info["has_real_main"]:
+                    self._log(f"  {c_file.name}: main() present (line {info['main_line']})\n")
+                elif info["main_commented_line"] or info["main_commented_block"]:
+                    self._log(f"  {c_file.name}: main() commented (line {info['main_line']}) — correct for submission\n")
+                else:
+                    self._log(f"  {c_file.name}: no main — library file\n")
+            except OSError:
+                pass
+        self._log("\n")
 
-        main_ok = True
-        for c_file in c_files:
-            source = c_file.read_text(errors="replace")
-            main_check = check_main_commented_or_missing(source)
-            if main_check["main_commented"]:
-                main_ok = False
-                self._log(f"  WARNING: main() commented in {c_file.name}\n")
-        if not main_ok:
-            self._log("  main() issues detected\n")
-
+        # ── 3. Norminette ──────────────────────────────────────────
+        self._log("=== Norminette ===\n")
+        norm_errors = 0
+        norm_ok = True
         try:
-            import subprocess
-            norm_ok = True
-            for c_file in list(c_files)[:20]:
-                r = subprocess.run(
-                    ["norminette", str(c_file)],
-                    capture_output=True, text=True, timeout=10
-                )
-                if "Error" in r.stdout:
-                    norm_ok = False
-                    break
-            checks["norminette"] = norm_ok
-            self._log(f"  Norminette: {'PASS' if norm_ok else 'FAIL'}\n")
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            checks["norminette"] = False
-            self._log("  Norminette: SKIP (not installed)\n")
+            for c_file in list(c_files) + list(h_files):
+                try:
+                    diags = self.formatter.diagnose_file(str(c_file))
+                    norm_errors += len(diags)
+                    if diags:
+                        norm_ok = False
+                        self._log(f"  {c_file.name}: {len(diags)} error(s)\n")
+                        for d in diags[:3]:
+                            self._log(f"    L{d.line} [{d.code}] {d.message}\n")
+                    else:
+                        self._log(f"  {c_file.name}: OK\n")
+                except RuntimeError:
+                    pass
+        except Exception:
+            norm_ok = False
 
+        checks["norminette"] = norm_ok
+        self._log(f"\n  Result: {'PASS' if norm_ok else f'FAIL ({norm_errors} errors)'}\n\n")
+
+        # ── 4. Makefile ────────────────────────────────────────────
         makefile = folder / "Makefile"
-        if makefile.exists():
+        has_makefile = makefile.exists()
+        if has_makefile:
             checks["makefile"] = True
-            self._log("  Makefile: FOUND\n")
+            # Check required targets
+            mk_content = makefile.read_text(errors="replace")
+            for target in ["all", "clean", "fclean", "re"]:
+                if re.search(rf"^{target}\s*:", mk_content, re.MULTILINE):
+                    checks[f"make_{target}"] = True
+            self._log(f"=== Makefile ===\n  Found: {makefile}\n")
+            for t in ["all", "clean", "fclean", "re"]:
+                self._log(f"  {t}: {'YES' if checks.get(f'make_{t}') else 'NO'}\n")
+            self._log("\n")
 
+        # ── 5. Function presence (for libft etc.) ─────────────────
+        if project_name == "libft":
+            self._log("=== libft functions ===\n")
+            required = [
+                "ft_isalpha","ft_isdigit","ft_isalnum","ft_isascii","ft_isprint",
+                "ft_strlen","ft_memset","ft_bzero","ft_memcpy","ft_memmove",
+                "ft_strlcpy","ft_strlcat","ft_toupper","ft_tolower","ft_strchr",
+                "ft_strrchr","ft_strncmp","ft_memchr","ft_memcmp","ft_strnstr",
+                "ft_atoi","ft_calloc","ft_strdup",
+            ]
+            bonus = ["ft_lstnew","ft_lstadd_front","ft_lstsize","ft_lstlast",
+                     "ft_lstadd_back","ft_lstdelone","ft_lstclear","ft_lstiter","ft_lstmap"]
+
+            found = set()
+            for c_file in c_files:
+                found.add(c_file.stem)
+
+            missing = [f for f in required if f not in found]
+            bonus_found = [f for f in bonus if f in found]
+
+            checks["mandatory_functions"] = len(missing) == 0
+            checks["bonus_functions"] = len(bonus_found) > 0
+
+            if missing:
+                self._log(f"  Missing mandatory: {', '.join(missing)}\n")
+            else:
+                self._log(f"  All {len(required)} mandatory functions found\n")
+            self._log(f"  Bonus: {len(bonus_found)}/{len(bonus)} ({', '.join(bonus_found) or 'none'})\n\n")
+
+        # ── 6. Predict ─────────────────────────────────────────────
         prediction = predict_grade(project_name, checks)
 
-        self._set_score(prediction.estimated_score)
-        self._set_confidence(prediction.confidence)
+        def _update_ui():
+            color = "#4caf50" if prediction.estimated_score >= 80 else \
+                    "#ff9800" if prediction.estimated_score >= 50 else "#f44336"
+            self.score_label.configure(
+                text=f"{prediction.estimated_score}", text_color=color)
+            self.pass_label.configure(
+                text="/ 125  PASS" if prediction.would_pass else "/ 125  FAIL",
+                text_color=color)
+            self.confidence_label.configure(
+                text=f"Confidence: {prediction.confidence}")
 
-        self._log(f"\n{'='*40}\n")
-        self._log(f"PROJECT: {prediction.project_name}\n")
-        self._log(f"ESTIMATED SCORE: {prediction.estimated_score}/125\n")
-        self._log(f"WOULD PASS: {'YES' if prediction.would_pass else 'NO'}\n")
-        self._log(f"CONFIDENCE: {prediction.confidence}\n")
-        self._log(f"{'='*40}\n\n")
+            for c in prediction.criteria:
+                row = ctk.CTkFrame(self.criteria_frame, fg_color="transparent")
+                row.pack(fill="x", pady=1)
+                dot_color = "#4caf50" if c.passed else "#f44336"
+                ctk.CTkLabel(row, text="●", text_color=dot_color,
+                              font=ctk.CTkFont(size=11), width=16).pack(side="left")
+                ctk.CTkLabel(row, text=f"{c.name}",
+                              font=ctk.CTkFont(size=11)).pack(side="left", padx=4)
+                ctk.CTkLabel(row, text=f"{c.weight:.0%}",
+                              text_color="gray",
+                              font=ctk.CTkFont(size=10)).pack(side="right")
 
-        self._log("CRITERIA:\n")
-        for c in prediction.criteria:
-            status = "PASS" if c.passed else "FAIL"
-            self._log(f"  [{status}] {c.name} (weight: {c.weight:.0%}) - {c.details}\n")
+            self.predict_btn.configure(state="normal", text="Predict Grade")
 
+        self.after(0, _update_ui)
+
+        self._log(f"{'='*40}\n")
+        self._log(f"SCORE: {prediction.estimated_score}/125\n")
+        self._log(f"PASS:  {'YES' if prediction.would_pass else 'NO'}\n")
         if prediction.notes:
-            self._log(f"\nNOTES:\n")
-            for note in prediction.notes:
-                self._log(f"  - {note}\n")
+            self._log("\nNotes:\n")
+            for n in prediction.notes:
+                self._log(f"  - {n}\n")
 
     def _log(self, text: str):
-        self.details_output.after(0, lambda: self.details_output.insert("end", text))
+        self.log.after(0, lambda: self.log.insert("end", text))
 
-    def _set_score(self, score: int):
-        color = "green" if score >= 80 else "orange" if score >= 50 else "red"
-        self.score_label.after(
-            0, lambda: self.score_label.configure(text=f"{score}/125", text_color=color)
-        )
 
-    def _set_confidence(self, conf: str):
-        self.confidence_label.after(
-            0, lambda: self.confidence_label.configure(text=f"Confidence: {conf}")
-        )
+import re
