@@ -157,15 +157,48 @@ class GitFrame(ctk.CTkFrame):
         threading.Thread(target=_check, daemon=True).start()
 
     def _gh_login(self):
-        self._log("Opening GitHub login in browser...\n")
-        def _do():
-            r = gh_auth_login()
-            if r.success:
-                self._log("GitHub connected.\n")
-            else:
-                self._log(f"Auth failed: {r.stderr}\n")
-            self._refresh_auth()
-        threading.Thread(target=_do, daemon=True).start()
+        """Open a real terminal for gh auth login so the one-time code is visible."""
+        import shutil
+        import subprocess as sp
+
+        # Find an available terminal emulator
+        terminals = [
+            ["x-terminal-emulator", "-e", "gh auth login --web -h github.com"],
+            ["gnome-terminal", "--", "bash", "-c", "gh auth login --web -h github.com; read -p 'Press Enter to close'"],
+            ["xterm", "-e", "gh auth login --web -h github.com; read -p 'Press Enter to close'"],
+            ["konsole", "-e", "bash", "-c", "gh auth login --web -h github.com; read -p 'Press Enter to close'"],
+        ]
+
+        launched = False
+        for cmd in terminals:
+            if shutil.which(cmd[0]):
+                try:
+                    sp.Popen(cmd)
+                    launched = True
+                    self._log(f"Opened terminal for GitHub login ({cmd[0]}).\n")
+                    self._log("Complete the login in the terminal window, then click Refresh.\n")
+                    break
+                except Exception:
+                    continue
+
+        if not launched:
+            # Fallback: show instructions if no terminal found
+            self._log("No terminal emulator found.\n")
+            self._log("Run this command in your terminal:\n")
+            self._log("  gh auth login --web -h github.com\n")
+            self._log("Then click 'Refresh' once done.\n")
+
+        # Show a refresh button hint
+        self.gh_login_btn.configure(text="Refresh", fg_color="gray30",
+                                     command=self._refresh_auth_and_restore)
+
+    def _refresh_auth_and_restore(self):
+        self.gh_login_btn.configure(
+            command=self._gh_login,
+            text="Connect",
+            fg_color=("#3B8ED0", "#1F6AA5"),
+        )
+        self._refresh_auth()
 
     def _select_folder(self):
         path = filedialog.askdirectory(title="Select project folder")

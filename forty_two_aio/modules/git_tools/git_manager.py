@@ -52,7 +52,26 @@ def is_gh_authenticated() -> bool:
 
 
 def gh_auth_login() -> GitResult:
-    return _run(["gh", "auth", "login", "--web", "-h", "github.com"])
+    """Returns the raw output of gh auth login so the GUI can display the one-time code."""
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "login", "--web", "-h", "github.com"],
+            capture_output=False,     # let output go to terminal / pipe
+            text=True,
+            timeout=120,
+        )
+        return GitResult(
+            success=result.returncode == 0,
+            command="gh auth login",
+            stdout="",
+            stderr="",
+        )
+    except FileNotFoundError:
+        return GitResult(success=False, command="gh auth login", stdout="",
+                         stderr="gh not installed")
+    except subprocess.TimeoutExpired:
+        return GitResult(success=False, command="gh auth login", stdout="",
+                         stderr="Auth timed out")
 
 
 def get_status(project_path: str) -> GitStatus:
