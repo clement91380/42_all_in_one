@@ -30,10 +30,9 @@ class DashboardFrame(ctk.CTkFrame):
             ("Norminette", "Auto-format ton code\nCheck + Fix en 1 clic", "norm"),
             ("Compilation", "Verifie -Wall -Wextra -Werror\nDetecte main() manquant", "compiler"),
             ("Repo Check", "Clone ton repo GitHub\nVerifie tout automatiquement", "repo"),
+            ("Git / GitHub", "Add + Commit + Push en 1 clic\nLogin auto dans le message", "git"),
             ("Exams", "Base d'exercices rank 02-06\nEntrainement exam", "exams"),
             ("Grade Predictor", "Estime ta note avant\nla soutenance", "predictor"),
-            ("Quick Stats", f"Login: {app.config.intra_login or 'non configure'}\n"
-                           f"GitHub: {app.config.github_username or 'non configure'}", None),
         ]
 
         for i, (title_text, desc, target) in enumerate(cards):

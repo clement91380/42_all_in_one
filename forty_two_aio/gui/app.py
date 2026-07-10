@@ -10,7 +10,10 @@ from .frames.compiler_frame import CompilerFrame
 from .frames.repo_frame import RepoFrame
 from .frames.exams_frame import ExamsFrame
 from .frames.predictor_frame import PredictorFrame
+from .frames.git_frame import GitFrame
+from .frames.exam_mode_frame import ExamModeFrame
 from ..core.config import Config
+from ..core.i18n import t, set_lang
 
 
 class App(ctk.CTk):
@@ -18,12 +21,15 @@ class App(ctk.CTk):
         super().__init__()
 
         self.config = Config.load()
+        self.exam_mode = False
+
+        set_lang(self.config.language)
 
         self.title("42 All-in-One")
         self.geometry("1200x800")
         self.minsize(900, 600)
 
-        ctk.set_appearance_mode("dark")
+        ctk.set_appearance_mode(self.config.theme)
         ctk.set_default_color_theme("blue")
 
         self.grid_rowconfigure(0, weight=1)
@@ -56,12 +62,14 @@ class App(ctk.CTk):
 
         self.nav_buttons = {}
         nav_items = [
-            ("dashboard", "Dashboard"),
-            ("norm", "Norminette"),
-            ("compiler", "Compilation"),
-            ("repo", "Repo Check"),
-            ("exams", "Exams"),
-            ("predictor", "Grade Predictor"),
+            ("dashboard",  t("nav_dashboard")),
+            ("norm",       t("nav_norm")),
+            ("compiler",   t("nav_compiler")),
+            ("repo",       t("nav_repo")),
+            ("git",        t("nav_git")),
+            ("exams",      t("nav_exams")),
+            ("predictor",  t("nav_predictor")),
+            ("exam_mode",  t("nav_exam_mode")),
         ]
 
         for key, label in nav_items:
@@ -104,12 +112,14 @@ class App(ctk.CTk):
         self.frames: dict[str, ctk.CTkFrame] = {}
 
         frame_classes = {
-            "dashboard": DashboardFrame,
-            "norm": NormFrame,
-            "compiler": CompilerFrame,
-            "repo": RepoFrame,
-            "exams": ExamsFrame,
-            "predictor": PredictorFrame,
+            "dashboard":  DashboardFrame,
+            "norm":       NormFrame,
+            "compiler":   CompilerFrame,
+            "repo":       RepoFrame,
+            "git":        GitFrame,
+            "exams":      ExamsFrame,
+            "predictor":  PredictorFrame,
+            "exam_mode":  ExamModeFrame,
         }
 
         for key, frame_class in frame_classes.items():
