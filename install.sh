@@ -31,8 +31,40 @@ echo "  +-----------------------------------------+"
 echo -e "${NC}"
 
 # ============================================================
-# STEP 1: Ask what to install
+# STEP 1: Action — install / reinstall / uninstall
 # ============================================================
+echo -e "${BOLD}What do you want to do?${NC}"
+echo ""
+echo "  1) Install / Update"
+echo "  2) Reinstall (clean install)"
+echo "  3) Uninstall (remove everything)"
+echo ""
+read -p "Action [1/2/3] (default: 1): " ACTION
+ACTION="${ACTION:-1}"
+
+if [ "$ACTION" = "3" ]; then
+    echo ""
+    warn "This will remove $INSTALL_DIR and all launchers."
+    read -p "Are you sure? [y/N]: " CONFIRM_REMOVE
+    if [[ "$CONFIRM_REMOVE" =~ ^[Yy] ]]; then
+        rm -rf "$INSTALL_DIR"
+        rm -f "$BIN_DIR/42aio" "$BIN_DIR/naf"
+        for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
+            [ -f "$rc" ] && sed -i '/# 42 All-in-One/d; /\.42aio/d; /\.local\/bin.*PATH/d' "$rc" 2>/dev/null || true
+        done
+        success "42 All-in-One uninstalled."
+    else
+        info "Uninstall cancelled."
+    fi
+    exit 0
+fi
+
+if [ "$ACTION" = "2" ]; then
+    info "Cleaning previous installation..."
+    rm -rf "$INSTALL_DIR/src" "$INSTALL_DIR/venv"
+fi
+
+echo ""
 echo -e "${BOLD}What do you want to install?${NC}"
 echo ""
 echo "  1) Full 42 All-in-One (GUI + CLI + formatter + all tools)"
