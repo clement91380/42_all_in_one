@@ -18,6 +18,7 @@ from .frames.exams_frame import ExamsFrame
 from .frames.predictor_frame import PredictorFrame
 from .frames.git_frame import GitFrame
 from .frames.exam_mode_frame import ExamModeFrame
+from .frames.editor_frame import EditorFrame
 from ..core.config import Config
 from ..core.i18n import t, set_lang
 from ..modules.updater.updater import check_for_update, do_update, get_current_version
@@ -85,6 +86,7 @@ class App(ctk.CTk):
         self.nav_buttons: dict[str, ctk.CTkButton] = {}
         nav_items = [
             ("dashboard",  t("nav_dashboard")),
+            ("editor",     "Editeur / Editor"),
             ("norm",       t("nav_norm")),
             ("compiler",   t("nav_compiler")),
             ("repo",       t("nav_repo")),
@@ -144,6 +146,7 @@ class App(ctk.CTk):
         self.frames: dict[str, ctk.CTkFrame] = {}
         frame_classes = {
             "dashboard":  DashboardFrame,
+            "editor":     EditorFrame,
             "norm":       NormFrame,
             "compiler":   CompilerFrame,
             "repo":       RepoFrame,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import threading
 from tkinter import filedialog
 
@@ -157,47 +158,92 @@ class GitFrame(ctk.CTkFrame):
         threading.Thread(target=_check, daemon=True).start()
 
     def _gh_login(self):
-        """Open a real terminal for gh auth login so the one-time code is visible."""
-        import shutil
+        """Run gh auth login, capture the one-time code, open browser, copy code to clipboard."""
+        self._log("Starting GitHub authentication...\n")
+        self.gh_login_btn.configure(state="disabled", text="Connecting...")
+        threading.Thread(target=self._run_gh_auth, daemon=True).start()
+
+    def _run_gh_auth(self):
         import subprocess as sp
+        import re
+        import webbrowser
 
-        # Find an available terminal emulator
-        terminals = [
-            ["x-terminal-emulator", "-e", "gh auth login --web -h github.com"],
-            ["gnome-terminal", "--", "bash", "-c", "gh auth login --web -h github.com; read -p 'Press Enter to close'"],
-            ["xterm", "-e", "gh auth login --web -h github.com; read -p 'Press Enter to close'"],
-            ["konsole", "-e", "bash", "-c", "gh auth login --web -h github.com; read -p 'Press Enter to close'"],
-        ]
+        if not shutil.which("gh"):
+            self._log("gh CLI not found.\n")
+            self._log("Run in your terminal:  gh auth login --web -h github.com\n")
+            self.gh_login_btn.after(0, lambda: self.gh_login_btn.configure(
+                state="normal", text="Connect"))
+            return
 
-        launched = False
-        for cmd in terminals:
-            if shutil.which(cmd[0]):
-                try:
-                    sp.Popen(cmd)
-                    launched = True
-                    self._log(f"Opened terminal for GitHub login ({cmd[0]}).\n")
-                    self._log("Complete the login in the terminal window, then click Refresh.\n")
-                    break
-                except Exception:
-                    continue
+        try:
+            proc = sp.Popen(
+                ["gh", "auth", "login", "--web", "-h", "github.com"],
+                stdout=sp.PIPE, stderr=sp.STDOUT,
+                text=True, bufsize=1,
+            )
+        except Exception as e:
+            self._log(f"Failed to start gh: {e}\n")
+            self.gh_login_btn.after(0, lambda: self.gh_login_btn.configure(
+                state="normal", text="Connect"))
+            return
 
-        if not launched:
-            # Fallback: show instructions if no terminal found
-            self._log("No terminal emulator found.\n")
-            self._log("Run this command in your terminal:\n")
-            self._log("  gh auth login --web -h github.com\n")
-            self._log("Then click 'Refresh' once done.\n")
+        code = None
+        url = None
+        buffer = ""
 
-        # Show a refresh button hint
-        self.gh_login_btn.configure(text="Refresh", fg_color="gray30",
-                                     command=self._refresh_auth_and_restore)
+        # Read output line by line until we get the code + URL
+        for line in proc.stdout:
+            buffer += line
+            self._log(line)
 
-    def _refresh_auth_and_restore(self):
-        self.gh_login_btn.configure(
-            command=self._gh_login,
-            text="Connect",
-            fg_color=("#3B8ED0", "#1F6AA5"),
+            # Detect one-time code: "First copy your one-time code: XXXX-XXXX"
+            m_code = re.search(r"one-time code[:\s]+([A-Z0-9]{4}-[A-Z0-9]{4})", line, re.I)
+            if m_code and not code:
+                code = m_code.group(1)
+                self._log(f"\n  Code: {code}  (copied to clipboard)\n\n")
+                # Copy to clipboard
+                self.gh_login_btn.after(0, lambda c=code: self._copy_to_clipboard(c))
+
+            # Detect the URL
+            m_url = re.search(r"(https://github\.com/login/device[^\s]*)", line)
+            if m_url and not url:
+                url = m_url.group(1)
+                self._log(f"  Opening browser: {url}\n")
+                self.gh_login_btn.after(0, lambda u=url: webbrowser.open(u))
+
+            # Success
+            if "Authentication complete" in line or "Logged in as" in line:
+                self._log("\nGitHub authentication complete!\n")
+
+        proc.wait()
+
+        if proc.returncode == 0:
+            self.gh_login_btn.after(0, self._on_auth_success)
+        else:
+            self._log("\nAuth failed. Try running:  gh auth login --web -h github.com\n")
+            self.gh_login_btn.after(0, lambda: self.gh_login_btn.configure(
+                state="normal", text="Retry"))
+
+    def _copy_to_clipboard(self, text: str):
+        """Copy text to system clipboard and show a notification banner."""
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+        except Exception:
+            pass
+
+        # Show banner
+        banner = ctk.CTkLabel(
+            self,
+            text=f"Code {text} copied to clipboard — paste it on github.com/login/device",
+            fg_color="#1a5c1a", corner_radius=6, padx=12, pady=6,
+            font=ctk.CTkFont(weight="bold"),
         )
+        banner.place(relx=0.5, rely=0.05, anchor="n")
+        self.after(8000, banner.destroy)
+
+    def _on_auth_success(self):
+        self.gh_login_btn.configure(state="normal")
         self._refresh_auth()
 
     def _select_folder(self):
