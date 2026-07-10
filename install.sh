@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# 42 All-in-One — Installation script for Linux/macOS
-# Usage: curl -fsSL https://raw.githubusercontent.com/YOUR_USER/42_all_in_one/main/install.sh | bash
-#    or: wget -qO- https://raw.githubusercontent.com/YOUR_USER/42_all_in_one/main/install.sh | bash
+# 42 All-in-One — Auto-installer for Linux/macOS
+# Usage: curl -fsSL https://raw.githubusercontent.com/clement91380/42_all_in_one/main/install.sh | bash
+#    or: wget -qO- https://raw.githubusercontent.com/clement91380/42_all_in_one/main/install.sh | bash
 
 set -e
 
 REPO_AIO="https://github.com/clement91380/42_all_in_one.git"
-REPO_NAF="https://github.com/clement91380/norminette-auto-formatter.git"
 INSTALL_DIR="$HOME/.42aio"
 VENV_DIR="$INSTALL_DIR/venv"
 BIN_DIR="$HOME/.local/bin"
@@ -19,114 +18,268 @@ NC='\033[0m'
 
 info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 success() { echo -e "${GREEN}[OK]${NC} $1"; }
-error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
+warn() { echo -e "${RED}[WARN]${NC} $1"; }
 
 echo -e "${BOLD}"
-echo "  ┌─────────────────────────────────────┐"
-echo "  │        42 All-in-One Installer       │"
-echo "  │   Norminette + Compiler + Exams +    │"
-echo "  │   Grade Predictor + Repo Checker     │"
-echo "  └─────────────────────────────────────┘"
+echo "  +-----------------------------------------+"
+echo "  |         42 All-in-One Installer          |"
+echo "  |    Norminette + Compiler + Exams +       |"
+echo "  |    Grade Predictor + Repo Checker        |"
+echo "  +-----------------------------------------+"
 echo -e "${NC}"
 
-# Check dependencies
-info "Checking dependencies..."
+# --- Detect OS and package manager ---
+OS="$(uname -s)"
+PKG=""
+INSTALL_CMD=""
+SUDO=""
 
-command -v python3 >/dev/null 2>&1 || error "python3 is required. Install it with: sudo apt install python3"
-command -v pip3 >/dev/null 2>&1 || command -v python3 -m pip >/dev/null 2>&1 || error "pip is required. Install it with: sudo apt install python3-pip"
-command -v git >/dev/null 2>&1 || error "git is required. Install it with: sudo apt install git"
+if [ "$(id -u)" -ne 0 ]; then
+    SUDO="sudo"
+fi
 
-PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-info "Python version: $PYTHON_VERSION"
-
-# Check for tkinter
-python3 -c "import tkinter" 2>/dev/null || {
-    info "tkinter not found, installing..."
-    if command -v apt >/dev/null 2>&1; then
-        sudo apt install -y python3-tk 2>/dev/null || info "Could not install tkinter automatically. Run: sudo apt install python3-tk"
+if [ "$OS" = "Linux" ]; then
+    if command -v apt-get >/dev/null 2>&1; then
+        PKG="apt"
+        INSTALL_CMD="$SUDO apt-get install -y"
+        $SUDO apt-get update -qq 2>/dev/null
+    elif command -v dnf >/dev/null 2>&1; then
+        PKG="dnf"
+        INSTALL_CMD="$SUDO dnf install -y"
     elif command -v pacman >/dev/null 2>&1; then
-        sudo pacman -S --noconfirm tk 2>/dev/null || info "Run: sudo pacman -S tk"
-    elif command -v brew >/dev/null 2>&1; then
-        brew install python-tk 2>/dev/null || info "Run: brew install python-tk"
+        PKG="pacman"
+        INSTALL_CMD="$SUDO pacman -S --noconfirm"
+    elif command -v zypper >/dev/null 2>&1; then
+        PKG="zypper"
+        INSTALL_CMD="$SUDO zypper install -y"
     fi
+elif [ "$OS" = "Darwin" ]; then
+    if command -v brew >/dev/null 2>&1; then
+        PKG="brew"
+        INSTALL_CMD="brew install"
+    else
+        info "Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        PKG="brew"
+        INSTALL_CMD="brew install"
+    fi
+fi
+
+install_pkg() {
+    local pkg_apt="$1"
+    local pkg_dnf="$2"
+    local pkg_pacman="$3"
+    local pkg_brew="$4"
+    local pkg_zypper="$5"
+
+    case "$PKG" in
+        apt)     $INSTALL_CMD "$pkg_apt" ;;
+        dnf)     $INSTALL_CMD "$pkg_dnf" ;;
+        pacman)  $INSTALL_CMD "$pkg_pacman" ;;
+        brew)    $INSTALL_CMD "$pkg_brew" ;;
+        zypper)  $INSTALL_CMD "$pkg_zypper" ;;
+        *)       warn "Unknown package manager, install '$pkg_apt' manually" ;;
+    esac
 }
 
-# Create install directory
+# --- Install all dependencies ---
+info "Installing dependencies..."
+
+# Python
+if ! command -v python3 >/dev/null 2>&1; then
+    info "Installing Python..."
+    install_pkg "python3" "python3" "python" "python@3" "python3"
+fi
+
+# pip / venv
+if ! python3 -m venv --help >/dev/null 2>&1; then
+    info "Installing python3-venv..."
+    install_pkg "python3-venv" "python3-libs" "python" "python@3" "python3-base"
+fi
+
+# git
+if ! command -v git >/dev/null 2>&1; then
+    info "Installing git..."
+    install_pkg "git" "git" "git" "git" "git"
+fi
+
+# gcc / cc (for compilation checks)
+if ! command -v cc >/dev/null 2>&1 && ! command -v gcc >/dev/null 2>&1; then
+    info "Installing gcc..."
+    install_pkg "gcc" "gcc" "gcc" "gcc" "gcc"
+fi
+
+# tkinter (required for GUI)
+if ! python3 -c "import tkinter" 2>/dev/null; then
+    info "Installing tkinter..."
+    install_pkg "python3-tk" "python3-tkinter" "tk" "python-tk" "python3-tk"
+fi
+
+# make (useful but not strictly required)
+if ! command -v make >/dev/null 2>&1; then
+    info "Installing make..."
+    install_pkg "make" "make" "make" "make" "make"
+fi
+
+PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+success "Python $PYTHON_VERSION ready"
+
+# --- Create install directory ---
 info "Installing to $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$BIN_DIR"
 
-# Clone or update repository
-if [ -d "$INSTALL_DIR/src" ]; then
+# --- Clone or update repository ---
+if [ -d "$INSTALL_DIR/src/.git" ]; then
     info "Updating existing installation..."
     cd "$INSTALL_DIR/src"
     git pull --quiet
 else
     info "Cloning repository..."
-    git clone --depth=1 "$REPO_AIO" "$INSTALL_DIR/src" 2>/dev/null || {
-        # Fallback: if repo doesn't exist yet, copy from local
-        info "Repo not available, checking local files..."
+    rm -rf "$INSTALL_DIR/src"
+    git clone --depth=1 "$REPO_AIO" "$INSTALL_DIR/src" 2>&1 || {
         SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         if [ -d "$SCRIPT_DIR/forty_two_aio" ]; then
-            cp -r "$SCRIPT_DIR" "$INSTALL_DIR/src"
+            cp -r "$SCRIPT_DIR/." "$INSTALL_DIR/src/"
             success "Installed from local files"
         else
-            error "Could not find source files"
+            warn "Could not clone repo, trying local install..."
+            exit 1
         fi
     }
 fi
 
-# Create virtual environment
+# --- Create virtual environment ---
 info "Creating virtual environment..."
-python3 -m venv "$VENV_DIR"
-source "$VENV_DIR/bin/activate"
+VENV_OK=false
 
-# Install the package
+# Attempt 1: standard venv
+if python3 -m venv "$VENV_DIR" 2>/dev/null; then
+    VENV_OK=true
+    success "venv created"
+fi
+
+# Attempt 2: install python3-venv package and retry
+if [ "$VENV_OK" = false ]; then
+    info "venv failed, installing python3-venv..."
+    install_pkg "python3-venv" "python3-libs" "python" "python@3" "python3-base"
+    if python3 -m venv "$VENV_DIR" 2>/dev/null; then
+        VENV_OK=true
+        success "venv created (after installing python3-venv)"
+    fi
+fi
+
+# Attempt 3: use virtualenv as fallback
+if [ "$VENV_OK" = false ]; then
+    info "venv still failing, trying virtualenv..."
+    pip3 install --user virtualenv 2>/dev/null || python3 -m pip install --user virtualenv 2>/dev/null
+    if python3 -m virtualenv "$VENV_DIR" 2>/dev/null; then
+        VENV_OK=true
+        success "virtualenv created as fallback"
+    fi
+fi
+
+# Attempt 4: no isolation (last resort)
+if [ "$VENV_OK" = false ]; then
+    warn "Could not create virtual environment. Installing without isolation..."
+    VENV_DIR=""
+fi
+
+# Activate if venv exists
+if [ -n "$VENV_DIR" ] && [ -d "$VENV_DIR" ]; then
+    source "$VENV_DIR/bin/activate"
+fi
+
+# --- Install the package ---
 info "Installing 42 All-in-One..."
 cd "$INSTALL_DIR/src"
-pip install --quiet --upgrade pip
-pip install --quiet -e .
 
-# Install norminette if not present
-if ! command -v norminette >/dev/null 2>&1; then
-    info "Installing norminette..."
-    pip install --quiet norminette
-fi
+install_python_pkg() {
+    # Attempt 1: normal pip install
+    if pip install --quiet "$@" 2>/dev/null; then
+        return 0
+    fi
+    # Attempt 2: --break-system-packages (PEP 668 bypass)
+    if pip install --quiet --break-system-packages "$@" 2>/dev/null; then
+        return 0
+    fi
+    # Attempt 3: pip3 with --user
+    if pip3 install --quiet --user "$@" 2>/dev/null; then
+        return 0
+    fi
+    # Attempt 4: python3 -m pip
+    if python3 -m pip install --quiet "$@" 2>/dev/null; then
+        return 0
+    fi
+    # Attempt 5: python3 -m pip --break-system-packages
+    if python3 -m pip install --quiet --break-system-packages "$@" 2>/dev/null; then
+        return 0
+    fi
+    warn "Failed to install: $*"
+    return 1
+}
 
-# Create launcher scripts
+install_python_pkg --upgrade pip setuptools wheel
+install_python_pkg -e .
+
+# --- Install norminette ---
+info "Installing norminette..."
+install_python_pkg norminette
+
+# --- Create launcher scripts ---
 info "Creating launchers..."
 
-cat > "$BIN_DIR/42aio" << 'LAUNCHER'
+if [ -n "$VENV_DIR" ] && [ -d "$VENV_DIR" ]; then
+    cat > "$BIN_DIR/42aio" << LAUNCHER
 #!/usr/bin/env bash
-source "$HOME/.42aio/venv/bin/activate"
-python -m forty_two_aio.main "$@"
+source "$VENV_DIR/bin/activate"
+python -m forty_two_aio.main "\$@"
 LAUNCHER
-chmod +x "$BIN_DIR/42aio"
 
-cat > "$BIN_DIR/naf" << 'LAUNCHER'
+    cat > "$BIN_DIR/naf" << LAUNCHER
 #!/usr/bin/env bash
-source "$HOME/.42aio/venv/bin/activate"
-python -m norminette_formatter.cli.main "$@"
+source "$VENV_DIR/bin/activate"
+python -m norminette_formatter.cli.main "\$@"
 LAUNCHER
+else
+    cat > "$BIN_DIR/42aio" << 'LAUNCHER'
+#!/usr/bin/env bash
+python3 -m forty_two_aio.main "$@"
+LAUNCHER
+
+    cat > "$BIN_DIR/naf" << 'LAUNCHER'
+#!/usr/bin/env bash
+python3 -m norminette_formatter.cli.main "$@"
+LAUNCHER
+fi
+
+chmod +x "$BIN_DIR/42aio"
 chmod +x "$BIN_DIR/naf"
 
-# Add to PATH if needed
+# --- Add to PATH ---
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     info "Adding $BIN_DIR to PATH..."
-    SHELL_RC=""
-    if [ -f "$HOME/.zshrc" ]; then
-        SHELL_RC="$HOME/.zshrc"
-    elif [ -f "$HOME/.bashrc" ]; then
-        SHELL_RC="$HOME/.bashrc"
-    fi
 
-    if [ -n "$SHELL_RC" ]; then
-        echo "" >> "$SHELL_RC"
-        echo "# 42 All-in-One" >> "$SHELL_RC"
-        echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> "$SHELL_RC"
-        info "Added to $SHELL_RC — restart your shell or run: source $SHELL_RC"
-    fi
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
+        if [ -f "$rc" ]; then
+            if ! grep -q "# 42 All-in-One" "$rc" 2>/dev/null; then
+                echo "" >> "$rc"
+                echo "# 42 All-in-One" >> "$rc"
+                echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> "$rc"
+            fi
+        fi
+    done
+
+    export PATH="$BIN_DIR:$PATH"
 fi
+
+# --- Verify installation ---
+info "Verifying installation..."
+python -c "from forty_two_aio.gui.app import App; print('  GUI: OK')" 2>/dev/null && true
+python -c "from norminette_formatter.core import NorminetteFormatter; print('  Formatter: OK')" 2>/dev/null && true
+python -c "from forty_two_aio.modules.exams.database import EXAM_DATABASE; print(f'  Exams: {len(EXAM_DATABASE)} exercises')" 2>/dev/null && true
+command -v norminette >/dev/null 2>&1 && echo "  Norminette: OK"
+command -v cc >/dev/null 2>&1 && echo "  Compiler: OK"
 
 echo ""
 success "Installation complete!"
@@ -142,9 +295,5 @@ echo "  naf check *.c      Norminette check only"
 echo "  naf fix *.c        Norminette fix only"
 echo "  naf server         Start LSP server (for editors)"
 echo ""
-echo -e "${BLUE}LSP for editors:${NC} naf server"
-echo "  VSCode: install extension from editors/vscode/"
-echo "  Vim/Neovim: see editors/vim/"
-echo "  Emacs: see editors/emacs/"
-echo "  Sublime: see editors/sublime/"
+echo -e "${BLUE}Restart your shell or run:${NC} source ~/.bashrc"
 echo ""
