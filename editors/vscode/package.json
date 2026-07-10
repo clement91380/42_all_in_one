@@ -1,0 +1,33 @@
+{
+  "name": "norminette-formatter",
+  "displayName": "Norminette Auto-Formatter",
+  "description": "42 norminette diagnostics and auto-fix via LSP",
+  "version": "0.1.0",
+  "publisher": "42-community",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Formatters", "Linters"],
+  "activationEvents": [
+    "onLanguage:c",
+    "onLanguage:cpp"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Norminette Formatter",
+      "properties": {
+        "norminetteFormatter.serverPath": {
+          "type": "string",
+          "default": "naf",
+          "description": "Path to the naf executable"
+        },
+        "norminetteFormatter.autoFixOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-fix norm errors on save"
+        }
+      }
+    }
+  }
+}

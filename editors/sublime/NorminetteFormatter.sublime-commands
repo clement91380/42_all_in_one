@@ -1,0 +1,16 @@
+[
+    {
+        "caption": "Norminette: Check File",
+        "command": "exec",
+        "args": {
+            "cmd": ["naf", "check", "$file"]
+        }
+    },
+    {
+        "caption": "Norminette: Fix File",
+        "command": "exec",
+        "args": {
+            "cmd": ["naf", "fix", "$file"]
+        }
+    }
+]

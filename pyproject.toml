@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "42-all-in-one"
+version = "0.1.0"
+description = "42 All-in-One — norminette formatter, compiler check, exam database, grade predictor, repo checker"
+requires-python = ">=3.9"
+dependencies = [
+    "pygls>=1.3.0",
+    "lsprotocol>=2023.0.0",
+    "customtkinter>=5.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "norminette",
+]
+
+[project.scripts]
+naf = "norminette_formatter.cli.main:main"
+42aio = "forty_two_aio.main:main"
+
+[project.gui-scripts]
+42aio-gui = "forty_two_aio.gui.app:run"
+
+[tool.setuptools.packages.find]
+include = ["norminette_formatter*", "forty_two_aio*"]

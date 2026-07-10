@@ -1,0 +1,19 @@
+{
+    // Norminette Auto-Formatter — Sublime Text LSP configuration
+    //
+    // Prerequisites:
+    //   1. Install "LSP" package via Package Control
+    //   2. Install naf: pip install norminette-auto-formatter
+    //   3. Add this config to LSP settings (Preferences > Package Settings > LSP > Settings)
+    //
+    // Add to LSP.sublime-settings under "clients":
+    //
+    // "norminette-formatter": {
+    //     "enabled": true,
+    //     "command": ["naf", "server"],
+    //     "selector": "source.c",
+    //     "schemes": ["file"]
+    // }
+
+    "show_diagnostics_panel_on_save": 0
+}
